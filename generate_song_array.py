@@ -1,8 +1,3 @@
-""" TO DO:
-    - get random size for array
-    - get probability of different values for array
-    - generate random array
-"""
 import numpy as np
 
 def generate_array(specs):
