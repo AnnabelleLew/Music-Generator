@@ -5,7 +5,7 @@ import librosa
 
 import scipy
 from pathlib import Path
-from scipy.ndimage.morphology import generate_binary_structure
+import IPython
 
 def songs_to_arrays(dir):
     spectrograms = list()
@@ -20,13 +20,14 @@ def songs_to_arrays(dir):
         spectrograms.append(spec)
     return spectrograms
 
-def arrays_to_songs(spec):
-    hist, bins = np.histogram(np.log(specs[0].flatten()), bins=specs[0].flatten().size//2, density=True)
+def arrays_to_songs(spec, vol=4, frac_cut=0.9):
+    spec += 1e-20
+    hist, bins = np.histogram(np.log(spec.flatten()), bins=spec.flatten().size//2, density=True)
     cumulative_distr = np.cumsum(hist * np.diff(bins))
-    frac_cut = 0.9
     bin_index_of_cutoff = np.searchsorted(cumulative_distr, frac_cut)
     cutoff_log_amplitude = bins[bin_index_of_cutoff]
-    audio_data = spsi(local_peaks_v3(np.log(spec), cutoff_log_amplitude), 4096, 4096 // 2)
+    audio_data = spsi(local_peaks_v3(np.log(spec), cutoff_log_amplitude), 4096, 4096 // 2, vol)
+    scipy.io.wavfile.write("tetris_music.wav", 44100, audio_data)
     return audio_data
 
 """
@@ -34,12 +35,12 @@ THIS CONCEPT IS NOT MINE
 Beauregard, G., Harish, M. and Wyse, L. (2015), Single Pass Spectrogram Inversion,
 in Proceedings of the IEEE International Conference on Digital Signal Processing. Singapore, 2015.
 """
-def spsi(spec, frame_len, step_size):
+def spsi(spec, frame_len, step_size, vol=4):
     spec = np.abs(spec)
     bins, frames = spec.shape # the number of frequency bins and time frames
     phase_accum = np.zeros(bins) # stores phase values in a given bin
-    audio_output = np.zeros(frames * step_size + frame_len - step_size) # stores output
-    hanning_window = scipy.signal.hanning(frame_len, sym=True)
+    output_audio = np.zeros(frames * step_size + frame_len - step_size) # stores output
+    hanning_window = scipy.signal.hann(frame_len, sym=True)
 
     for frame in range(frames):
         for bin in range(1, bins - 1):
@@ -97,7 +98,7 @@ def spsi(spec, frame_len, step_size):
         new_phase[0] = 0
         new_phase[bins - 1] = 0
         construction = np.concatenate([new_phase, np.flip(np.conjugate(new_phase[1:bins - 1]), 0)])
-        construction = np.real(np.fft.ifft(construction)) * hanning_window
+        construction = (np.real(np.fft.ifft(construction)) * hanning_window * (10 ** vol)).astype('int')
 
         # OVERLAP
         # merges the reconstruction with the current audio
@@ -105,8 +106,7 @@ def spsi(spec, frame_len, step_size):
     return output_audio
 
 def local_peaks_v3(data, cutoff=0):
-    fp = generate_binary_structure(rank=2,connectivity=1)
     threshold = np.zeros(data.shape)
     threshold.fill(cutoff)
-    peaks = np.logical_and(True, np.greater(data, threshold)).astype('int')
+    peaks = np.logical_and(True, np.greater(data, threshold))
     return peaks * data
